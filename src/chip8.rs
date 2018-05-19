@@ -4,25 +4,25 @@ use std::io::prelude::*;
 use std::path::Path;
 
 #[allow(dead_code)]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    const CHIP8_FONTSET: [u8; 80] = [
-        0xF0, 0x90, 0x90, 0x90, 0xF0, //0
-        0x20, 0x60, 0x20, 0x20, 0x70, //1
-        0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
-        0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
-        0x90, 0x90, 0xF0, 0x10, 0x10, //4
-        0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
-        0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
-        0xF0, 0x10, 0x20, 0x40, 0x40, //7
-        0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
-        0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
-        0xF0, 0x90, 0xF0, 0x90, 0x90, //A
-        0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
-        0xF0, 0x80, 0x80, 0x80, 0xF0, //C
-        0xE0, 0x90, 0x90, 0x90, 0xE0, //D
-        0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
-        0xF0, 0x80, 0xF0, 0x80, 0x80  //F
-    ];
+#[cfg_attr(rustfmt, rustfmt_skip)]
+const CHIP8_FONTSET: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, //0
+    0x20, 0x60, 0x20, 0x20, 0x70, //1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
+    0x90, 0x90, 0xF0, 0x10, 0x10, //4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
+    0xF0, 0x10, 0x20, 0x40, 0x40, //7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, //A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, //C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, //D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  //F
+];
 
 #[allow(dead_code)]
 pub struct Chip8 {
@@ -109,7 +109,16 @@ impl Chip8 {
 
         // println!("\n--- end memory dump ---");
 
-        println!("\n\n opcode -> {:x} \n", self.opcode & 0xF000);
+        // print opcodes
+        println!("\n\n opcode -> {:x} \n", self.opcode);
+
+        // print registers
+        println!("---registers---");
+        for reg in self.v.iter() {
+            print!("{:x}, ", reg);
+        }
+        print!("\n");
+        println!("---end registers---");
 
         match self.opcode & 0xF000 {
             // 00E_
@@ -129,15 +138,26 @@ impl Chip8 {
                 _ => println!("Unknown opcode"),
             },
             // 1NNN - Jumps to address NNN
-            0x1000 => {}
+            0x1000 => {
+                self.pc = self.opcode & 0x0FFF;
+            }
             // 2NNN - Calls subroutine at NNN
             0x2000 => {
                 self.stack[self.sp as usize] = self.pc;
                 self.sp += 1;
                 self.pc = self.opcode & 0x0FFF;
             }
-            // 3XNN - Skips the next instruction if VX = NX
-            0x3000 => {}
+            // 3XNN - Skips the next instruction if VX = NN
+            0x3000 => {
+                let x = (self.opcode & 0x0F00) >> 8;
+                let vx = self.v[x as usize] as u16;
+
+                if vx == (self.opcode & 0x00FF) {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
+            }
             // 4XNN - Skips the next instruction if VX != NX
             0x4000 => {
                 let x = (self.opcode & 0x0F00) >> 8;
@@ -159,7 +179,12 @@ impl Chip8 {
                 self.pc += 2;
             }
             // 7XNN - Adds NN to VX
-            0x7000 => {}
+            0x7000 => {
+                let x = (self.opcode & 0x0F00) >> 8;
+                self.v[x as usize] = self.v[x as usize].wrapping_add((self.opcode & 0x00FF) as u8);
+                //self.v[x as usize] += (self.opcode & 0x00FF) as u8;
+                self.pc += 2;
+            }
             // 8XY_
             0x8000 => {}
             // 9XY0 - Skips the next instruction if VX doesn't equal VY
@@ -192,7 +217,30 @@ impl Chip8 {
                     VF is set to 1 if any screen pixels are flipped from set to unset when
                     the sprire is drawn, and to 0 if that doesn't happen.
                 */
-            0xD000 => {}
+            0xD000 => {
+                let vx_index = ((self.opcode & 0x0F00) >> 8) as usize;
+                let x = self.v[vx_index] as u16;
+                let vy_index = ((self.opcode & 0x00F0) >> 4) as usize;
+                let y = self.v[vy_index] as u16;
+                let height = self.opcode & 0x000F;
+                let mut pixel: u16;
+
+                self.v[0xF] = 0;
+                for yline in 0..height {
+                    pixel = self.memory[(self.i + yline) as usize] as u16;
+                    for xline in 0..8 {
+                        if (pixel & (0x80 >> xline)) != 0 {
+                            if self.gfx[(x + xline + ((y + yline) * 64)) as usize] == 1 {
+                                self.v[0xF] = 1;
+                            }
+                            self.gfx[(x + xline + ((y + yline) * 64)) as usize] ^= 1;
+                        }
+                    }
+                }
+
+                self.draw_flag = true;
+                self.pc += 2;
+            }
             // EX__
             0xE000 => match self.opcode & 0x00FF {
                 // EX9E - Skips the next instruction if the key stored in VX is pressed

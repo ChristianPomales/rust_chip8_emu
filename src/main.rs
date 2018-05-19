@@ -3,8 +3,11 @@ extern crate sdl2_sys;
 
 extern crate byteorder;
 
+use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
+
+use std::mem::transmute;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -105,21 +108,13 @@ fn main() {
         if chip.draw_flag {
             chip.draw_flag = false;
 
-            // let gfx_pixels = chip.gfx.to_owned();
-            // pixels = &mut gfx_pixels.to_owned();
-
             for index in 0..pixels.len() {
                 let gfx_pixel = chip.gfx[index].to_owned() as u32;
                 let new_value = (0x00FFFFFF * gfx_pixel) | 0xFF000000;
                 pixels[index] = new_value;
             }
 
-            // hack to get pixels correct
-            let mut buff = [0; (2048 * 32) / 8];
-
-            for pixel in pixels.iter() {
-                LittleEndian::write_u32(&mut buff, *pixel);
-            }
+            let buff: [u8; 8192] = unsafe { transmute(*pixels) };
 
             // these return errors that should really be handled
             let _ = sdl_texture.update(None, &buff, 64 * mem::size_of::<u32>());
@@ -128,7 +123,7 @@ fn main() {
             let _ = renderer.present();
         }
 
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(100));
         // thread::sleep(Duration::from_micros(1200));
     }
 }
