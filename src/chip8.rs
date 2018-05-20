@@ -1,9 +1,10 @@
+extern crate rand;
+
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
-#[allow(dead_code)]
 #[cfg_attr(rustfmt, rustfmt_skip)]
 const CHIP8_FONTSET: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
@@ -24,7 +25,6 @@ const CHIP8_FONTSET: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80  //F
 ];
 
-#[allow(dead_code)]
 pub struct Chip8 {
     stack: [u16; 16], // Stack
     sp: u16,          // Stack pointer
@@ -101,24 +101,24 @@ impl Chip8 {
         let second_byte = self.memory[self.pc as usize + 1] as u16;
         self.opcode = first_byte | second_byte;
 
-        // println!("--- begin memory dump ---");
-
-        // for byte in self.memory.iter() {
-        //     print!("{:x}, ", byte);
-        // }
-
-        // println!("\n--- end memory dump ---");
-
         // print opcodes
         println!("\n\n opcode -> {:x} \n", self.opcode);
 
-        // print registers
-        println!("---registers---");
-        for reg in self.v.iter() {
-            print!("{:x}, ", reg);
-        }
-        print!("\n");
-        println!("---end registers---");
+        // // print registers
+        // println!("---registers---");
+        // for reg in self.v.iter() {
+        //     print!("{:x}, ", reg);
+        // }
+        // print!("\n");
+        // println!("---end registers---");
+
+        // println!("i is {}", self.i);
+
+        // println!("--- begin memory dump ---");
+        // for byte in self.memory.iter() {
+        //     print!("{:x}, ", byte);
+        // }
+        // println!("\n--- end memory dump ---");
 
         match self.opcode & 0xF000 {
             // 00E_
@@ -158,7 +158,7 @@ impl Chip8 {
                     self.pc += 2;
                 }
             }
-            // 4XNN - Skips the next instruction if VX != NX
+            // 4XNN - Skips the next instruction if VX != NN
             0x4000 => {
                 let x = (self.opcode & 0x0F00) >> 8;
                 let vx = self.v[x as usize] as u16; // not sure if this cast is correct
@@ -170,8 +170,19 @@ impl Chip8 {
                     self.pc += 2;
                 }
             }
-            // 5XY0 - Skips the next instruction if VX = VY
-            0x5000 => {}
+            // 5XY0 - Skips the next instruction if VX == VY
+            0x5000 => {
+                let x = (self.opcode & 0x0F00) >> 8;
+                let vx = self.v[x as usize];
+                let y = (self.opcode & 0x00F0) >> 4;
+                let vy = self.v[y as usize];
+
+                if vx == vy {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
+            }
             // 6XNN - Sets VX to NN
             0x6000 => {
                 let x = (self.opcode & 0x0F00) >> 8;
@@ -186,8 +197,116 @@ impl Chip8 {
                 self.pc += 2;
             }
             // 8XY_
-            0x8000 => {}
-            // 9XY0 - Skips the next instruction if VX doesn't equal VY
+            0x8000 => match self.opcode & 0x000F {
+                // 8XY0 - Sets VX to the value of VY
+                0x0000 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+                    self.v[x as usize] = self.v[y as usize];
+                    self.pc += 2;
+                }
+                // 8XY1 - Sets VX to (VX OR VY)
+                0x0001 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+                    self.v[x as usize] |= self.v[y as usize];
+                    self.pc += 2;
+                }
+                // 8XY2 - Sets VX to (VX AND VY)
+                0x0002 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+                    self.v[x as usize] &= self.v[y as usize];
+                    self.pc += 2;
+                }
+                // 8XY3 = Sets VX to (VX XOR VY)
+                0x0003 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+                    self.v[x as usize] ^= self.v[y as usize];
+                    self.pc += 2;
+                }
+                /*
+                    8XY4 - Adds VY to VX. VF is set to 1 when there is a carry,
+                    and 0 when there isn't
+                */
+                0x0004 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+
+                    let n = self.v[x as usize].wrapping_add(self.v[y as usize]);
+                    self.v[x as usize] = n;
+
+                    if self.v[y as usize] > self.v[x as usize] {
+                        self.v[0xF] = 1 // carry
+                    } else {
+                        self.v[0xF] = 0 // no carry
+                    }
+
+                    self.pc += 2;
+                }
+                /*
+                    8XY5 - VY is subtracted from VX. VF is set to 0 when there is a borrow,
+                    and 1 when there isn't
+                */
+                0x0005 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+
+                    if self.v[y as usize] > self.v[x as usize] {
+                        self.v[0xF] = 0 // borrow
+                    } else {
+                        self.v[0xF] = 1 // no borrow
+                    }
+
+                    let n = self.v[x as usize].wrapping_sub(self.v[y as usize]);
+                    self.v[x as usize] = n;
+
+                    self.pc += 2;
+                }
+                /*
+                    8XY6 - Shifts VX right by one. VF is set to the value of
+                    the least significant bit of VX before the shift
+                */
+                0x0006 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.v[0xF] = self.v[x as usize] & 0x1;
+                    self.v[x as usize] >>= 1;
+
+                    self.pc += 2;
+                }
+                /*
+                    8XY7 - Sets VX to VY minus VX. VF is set to 0 when there's
+                    a borrow, and 1 when there isn't.
+                */
+                0x0007 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let y = (self.opcode & 0x00F0) >> 4;
+
+                    if self.v[x as usize] > self.v[y as usize] {
+                        self.v[0xF] = 0 // borrow
+                    } else {
+                        self.v[0xF] = 1 // no borrow
+                    }
+
+                    self.v[x as usize] = self.v[y as usize] - self.v[x as usize];
+
+                    self.pc += 2;
+                }
+                /*
+                    8XYE - Shifts VX left by one. VF is set to the value of the
+                    most significant bit of VX before the shift.
+                */
+                0x000E => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.v[0xF] = self.v[x as usize] >> 7;
+                    self.v[x as usize] <<= 1;
+
+                    self.pc += 2;
+                }
+                _ => println!("Unknown opcode"),
+            },
+            // 9XY0 - Skips the next instruction if VX != VY
             0x9000 => {
                 let x = (self.opcode & 0x0F00) >> 8;
                 let vx = self.v[x as usize];
@@ -206,9 +325,19 @@ impl Chip8 {
                 self.pc += 2;
             }
             // BNNN - Jumps to the address NNN + V0
-            0xB000 => {}
+            0xB000 => {
+                self.pc = (self.opcode & 0x0FFF) + self.v[0] as u16;
+            }
             // CXNN - Sets VX to a random number, masked by NN
-            0xC000 => {}
+            0xC000 => {
+                // pretty sure i can just gen a random u8 instead of doing the masking
+                let rn: u8 = rand::random();
+                //let mod_number = (0xFF as u16).wrapping_add(1);
+                let mut masked_rn: u8 = (rn) & (self.opcode & 0x0FF) as u8;
+                let vx_index = ((self.opcode & 0x0F00) >> 8) as usize;
+                self.v[vx_index] = masked_rn;
+                self.pc += 2;
+            }
             /* 
                     DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
                     and a height of N pixels.
@@ -230,10 +359,11 @@ impl Chip8 {
                     pixel = self.memory[(self.i + yline) as usize] as u16;
                     for xline in 0..8 {
                         if (pixel & (0x80 >> xline)) != 0 {
-                            if self.gfx[(x + xline + ((y + yline) * 64)) as usize] == 1 {
+                            let index = (x + xline + ((y + yline) * 64)) % 2048;
+                            if self.gfx[index as usize] == 1 {
                                 self.v[0xF] = 1;
                             }
-                            self.gfx[(x + xline + ((y + yline) * 64)) as usize] ^= 1;
+                            self.gfx[index as usize] ^= 1;
                         }
                     }
                 }
@@ -270,7 +400,105 @@ impl Chip8 {
                 _ => println!("Unknown opcode"),
             },
             // FX__
-            0xF000 => {}
+            0xF000 => match self.opcode & 0x00FF {
+                // FX0A - Sets VX to the value of the delay timer
+                0x0007 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.v[x as usize] = self.delay_timer;
+                    self.pc += 2;
+                }
+                // FX0A - A key press is awaited, and then stored in VX
+                0x000A => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let mut key_pressed = false;
+
+                    for i in 0..16 {
+                        if self.key[i] != 0 {
+                            self.v[x as usize] = i as u8;
+                            key_pressed = true;
+                        }
+                    }
+
+                    // only increment pc if we press a key
+                    // this is different from how the C++ program does it
+                    if key_pressed {
+                        self.pc += 2;
+                    }
+                }
+                // FX15 - Sets the delay timer to VX
+                0x0015 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.delay_timer = self.v[x as usize];
+                    self.pc += 2;
+                }
+                // FX18 - Sets the sound timer to VX
+                0x0018 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.sound_timer = self.v[x as usize];
+                    self.pc += 2;
+                }
+                // FX1E - Adds VX to i
+                0x001E => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    let n = self.i.wrapping_add(self.v[x as usize] as u16);
+
+                    if n > 0xFFF {
+                        self.v[0xF] = 1;
+                    } else {
+                        self.v[0xF] = 0;
+                    }
+
+                    self.i += self.v[x as usize] as u16;
+                    self.pc += 2;
+                }
+                /* 
+                    FX29 - Sets i to the location of the sprite for the character in VX.
+                    Characters 0-F (in hex) are represented by a 4x5 font
+                */
+                0x0029 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.i = (self.v[x as usize] * 0x5) as u16;
+                    self.pc += 2;
+                }
+                /* 
+                    FX33 - Stores the binary-coded decimal representation of VX at the 
+                    address i, i + 1, and i + 2
+                */
+                0x0033 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+                    self.memory[self.i as usize] = self.v[x as usize] / 100;
+                    self.memory[self.i as usize + 1] = (self.v[x as usize] / 10) % 10;
+                    self.memory[self.i as usize + 2] = (self.v[x as usize] % 100) % 10;
+                    self.pc += 2;
+                }
+                // FX55 - Stores V0 to VX in memory starting at address i
+                0x0055 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+
+                    for index in 0..x {
+                        self.memory[(self.i + index) as usize] = self.v[index as usize];
+                    }
+
+                    // On original interpreter, when operation is done i = i + x + 1
+                    self.i += x + 1;
+
+                    self.pc += 2;
+                }
+                // does things that are important i think???
+                0x0065 => {
+                    let x = (self.opcode & 0x0F00) >> 8;
+
+                    for index in 0..=x {
+                        self.v[index as usize] = self.memory[(self.i + index) as usize];
+                    }
+
+                    // On original interpreter, when operation is done i = i + x + 1
+                    self.i += x + 1;
+
+                    self.pc += 2;
+                }
+                _ => println!("Unknown opcode"),
+            },
             _ => println!("Unimplemented opcode {:X}", self.opcode & 0xF000),
         }
 

@@ -1,27 +1,40 @@
 extern crate sdl2;
 extern crate sdl2_sys;
 
-extern crate byteorder;
-
-use byteorder::BigEndian;
-use byteorder::ByteOrder;
-use byteorder::LittleEndian;
-
 use std::mem::transmute;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use std::process;
 
 use std::mem;
+use std::process;
 use std::thread;
 use std::time::Duration;
 
 pub mod chip8;
 
+const KEYMAP: [sdl2::keyboard::Keycode; 16] = [
+    sdl2::keyboard::Keycode::X,
+    sdl2::keyboard::Keycode::Num1,
+    sdl2::keyboard::Keycode::Num2,
+    sdl2::keyboard::Keycode::Num3,
+    sdl2::keyboard::Keycode::Q,
+    sdl2::keyboard::Keycode::W,
+    sdl2::keyboard::Keycode::E,
+    sdl2::keyboard::Keycode::A,
+    sdl2::keyboard::Keycode::S,
+    sdl2::keyboard::Keycode::D,
+    sdl2::keyboard::Keycode::Z,
+    sdl2::keyboard::Keycode::C,
+    sdl2::keyboard::Keycode::Num4,
+    sdl2::keyboard::Keycode::R,
+    sdl2::keyboard::Keycode::F,
+    sdl2::keyboard::Keycode::V,
+];
+
 fn main() {
     let mut chip = chip8::Chip8::new();
-    chip.load("./roms/TETRIS");
+    chip.load("./roms/BRIX");
 
     // sets up window and draws rectangle right now
     let ctx = sdl2::init().unwrap();
@@ -53,20 +66,12 @@ fn main() {
         Err(err) => panic!("failed to create renderer: {}", err),
     };
 
-    #[allow(unused_mut)]
-    let mut pixels = &mut [0 as u32; 2048];
+    let pixels = &mut [0 as u32; 2048];
 
     let mut events = ctx.event_pump().unwrap();
 
     loop {
         chip.emulate_cycle();
-
-        // gfx debug
-        // println!("---gfx---");
-        // for element in chip.gfx.into_iter() {
-        //     print!("{}, ", element);
-        // }
-        // println!("---end gfx---");
 
         for event in events.poll_iter() {
             match event {
@@ -78,28 +83,30 @@ fn main() {
                     process::exit(1);
                 }
                 Event::KeyDown {
-                    keycode: Some(Keycode::Left),
+                    repeat,
+                    keycode: Some(keycode),
                     ..
                 } => {
-                    // do things
+                    if !repeat {
+                        for i in 0..16 {
+                            if keycode == KEYMAP[i] {
+                                chip.key[i] = 1;
+                            }
+                        }
+                    }
                 }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Right),
+                Event::KeyUp {
+                    repeat,
+                    keycode: Some(keycode),
                     ..
                 } => {
-                    // do things
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Up),
-                    ..
-                } => {
-                    // do things
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Down),
-                    ..
-                } => {
-                    // do things
+                    if !repeat {
+                        for i in 0..16 {
+                            if keycode == KEYMAP[i] {
+                                chip.key[i] = 0;
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -123,7 +130,7 @@ fn main() {
             let _ = renderer.present();
         }
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(10));
         // thread::sleep(Duration::from_micros(1200));
     }
 }
