@@ -84,7 +84,7 @@ impl Chip8 {
         let mut rom = Vec::new();
         match file.read_to_end(&mut rom) {
             Err(why) => panic!("couldn't read {}: {}", display, why.description()),
-            Ok(_) => print!("{} {} contains bytes\n", display, rom.len()),
+            Ok(_) => {}
         }
 
         if rom.len() < (4096 - 512) {
@@ -102,7 +102,7 @@ impl Chip8 {
         self.opcode = first_byte | second_byte;
 
         // print opcodes
-        println!("\n\n opcode -> {:x} \n", self.opcode);
+        // println!("\n\n opcode -> {:x} \n", self.opcode);
 
         // // print registers
         // println!("---registers---");

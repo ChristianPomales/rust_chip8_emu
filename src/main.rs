@@ -1,15 +1,17 @@
 extern crate sdl2;
 extern crate sdl2_sys;
 
-use std::mem::transmute;
-
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 use std::mem;
+use std::mem::transmute;
 use std::process;
 use std::thread;
 use std::time::Duration;
+
+#[allow(unused_imports)]
+use std::env;
 
 pub mod chip8;
 
@@ -34,7 +36,10 @@ const KEYMAP: [sdl2::keyboard::Keycode; 16] = [
 
 fn main() {
     let mut chip = chip8::Chip8::new();
-    chip.load("./roms/BRIX");
+    // let args: String = env::args().collect();
+    // chip.load(&args);
+
+    chip.load("roms/PONG2");
 
     // sets up window and draws rectangle right now
     let ctx = sdl2::init().unwrap();
@@ -131,6 +136,5 @@ fn main() {
         }
 
         thread::sleep(Duration::from_millis(10));
-        // thread::sleep(Duration::from_micros(1200));
     }
 }
